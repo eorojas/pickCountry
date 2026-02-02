@@ -54,9 +54,9 @@ From a list of countries create a web page that efficiently picks a country.
 - [x] **Data Prep**: Validate and fix JSON encoding/schema.
 - [x] **Setup**: Initialize Go module (`go mod init`).
 - [x] **Core Logic**: Implement data structures and map building (NameEntryMap, CountryCodeMap).
-- [ ] **Backend**: Create basic Go server to serve data.
-- [ ] **Frontend**: Create the web interface for the Input Matcher.
-- [ ] **Testing**: Add unit tests.
+- [x] **Backend**: Create basic Go server to serve data.
+- [x] **Frontend**: Create the web interface for the Input Matcher.
+- [ ] **Testing**: Add unit tests for App Logic and Server.
 - [ ] **Refinement**: Refactor and polish.
 
 ## Useful Commands

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pick A Country</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+        }
+        #container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 300px;
+        }
+        #filter-display {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+            min-height: 1.4em;
+            border-bottom: 1px solid #ccc;
+        }
+        #list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .item.selected {
+            background-color: #007bff;
+            color: white;
+        }
+        #final-selection {
+            margin-top: 20px;
+            color: green;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="filter-display">Type to search...</div>
+    <ul id="list"></ul>
+    <div id="final-selection"></div>
+</div>
+
+<script>
+    const listEl = document.getElementById('list');
+    const filterEl = document.getElementById('filter-display');
+    const finalEl = document.getElementById('final-selection');
+
+    function render(state) {
+        if (state.is_final) {
+            finalEl.textContent = "Selected: " + state.filter;
+            finalEl.style.display = "block";
+            listEl.style.display = "none";
+            filterEl.textContent = state.filter;
+            return;
+        }
+
+        finalEl.style.display = "none";
+        listEl.style.display = "block";
+        filterEl.textContent = state.filter || (state.list.length > 0 && state.list[0].length === 1 ? "Select Letter" : "Select Country");
+
+        listEl.innerHTML = '';
+        state.list.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'item' + (index === state.selection ? ' selected' : '');
+            li.textContent = item;
+            listEl.appendChild(li);
+        });
+
+        // Scroll selected into view
+        const selected = listEl.querySelector('.selected');
+        if (selected) {
+            selected.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    async function fetchState() {
+        try {
+            const res = await fetch('/api/state');
+            const state = await res.json();
+            render(state);
+        } catch (e) {
+            console.error("Error fetching state", e);
+        }
+    }
+
+    async function sendInput(key, code) {
+        try {
+            const res = await fetch('/api/input', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key, code })
+            });
+            const state = await res.json();
+            render(state);
+        } catch (e) {
+            console.error("Error sending input", e);
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        // Prevent default scrolling for arrows
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+            e.preventDefault();
+        }
+        
+        // We only care about single char keys or navigation keys
+        // Ignore modifiers (ctrl, alt, etc) unless needed
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+        sendInput(e.key, e.code);
+    });
+
+    // Initial load
+    fetchState();
+</script>
+
+</body>
+</html>
