@@ -15,10 +15,11 @@ type Config struct {
 
 // State represents the current UI state to be sent to the frontend.
 type State struct {
-	List      []string `json:"list"`
-	Selection int      `json:"selection"`
-	Filter    string   `json:"filter"`
-	IsFinal   bool     `json:"is_final"` // True if a country has been selected (Enter pressed)
+	List         []string `json:"list"`
+	Selection    int      `json:"selection"`
+	Filter       string   `json:"filter"`
+	IsFinal      bool     `json:"is_final"`
+	SelectedCode string   `json:"selected_code,omitempty"`
 }
 
 // Manager handles the application state and logic.
@@ -32,6 +33,7 @@ type Manager struct {
 	filter       string
 	selection    int
 	isFinal      bool
+	selectedCode string
 }
 
 // NewManager creates a new state manager.
@@ -73,10 +75,11 @@ func (m *Manager) GetState() State {
 	}
 
 	return State{
-		List:      list,
-		Selection: m.selection,
-		Filter:    m.filter,
-		IsFinal:   m.isFinal,
+		List:         list,
+		Selection:    m.selection,
+		Filter:       m.filter,
+		IsFinal:      m.isFinal,
+		SelectedCode: m.selectedCode,
 	}
 }
 
@@ -126,13 +129,8 @@ func (m *Manager) ProcessInput(key string, code string) {
 				m.filter += item
 				m.selection = 0
 			} else {
-				// It's a country name, Right Arrow acts like Enter?
-				// "Next selection is make by right arrow... or <enter>"
-				// If we are at the leaf (country name), maybe it finalizes?
-				m.filter = item // Set filter to full name?
-				// Verify if this is a unique match? 
-				// The prompt says "Output Method: Display the country name on web page."
-				// Let's assume selecting a full country name finalizes it.
+				m.filter = item
+				m.selectedCode = string(m.nameMap[item])
 				m.isFinal = true
 			}
 		}
@@ -146,6 +144,7 @@ func (m *Manager) ProcessInput(key string, code string) {
 			} else {
 				// Finalize
 				m.filter = item
+				m.selectedCode = string(m.nameMap[item])
 				m.isFinal = true
 			}
 		}
@@ -167,6 +166,7 @@ func (m *Manager) reset() {
 	m.filter = ""
 	m.selection = 0
 	m.isFinal = false
+	m.selectedCode = ""
 }
 
 // getCurrentList calculates the list to display based on the current filter.

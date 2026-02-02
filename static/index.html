@@ -68,7 +68,7 @@
 
     function render(state) {
         if (state.is_final) {
-            finalEl.textContent = "Selected: " + state.filter;
+            finalEl.textContent = "Selected: " + state.filter + " (" + state.selected_code + ")";
             finalEl.style.display = "block";
             listEl.style.display = "none";
             filterEl.textContent = state.filter;
