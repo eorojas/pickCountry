@@ -3,7 +3,7 @@
   { "name": "Åland Islands", "code": "AX", "aliases": ["Aland", "Oland"] },
   { "name": "Albania", "code": "AL", "aliases": [] },
   { "name": "Algeria", "code": "DZ", "aliases": [] },
-  { "name": "American Samoa", "code": "AS", "aliases": ["Samoa"] },
+  { "name": "American Samoa", "code": "AS", "aliases": [] },
   { "name": "Andorra", "code": "AD", "aliases": [] },
   { "name": "Angola", "code": "AO", "aliases": [] },
   { "name": "Anguilla", "code": "AI", "aliases": [] },
