@@ -129,24 +129,12 @@
             const li = document.createElement('li');
             li.className = 'item' + (index === state.selection ? ' selected' : '');
             li.textContent = item;
+            li.onclick = () => sendInput("MouseSelect", "", item); // Mouse selection
             listEl.appendChild(li);
         });
     }
 
-    async function fetchState() {
-        // Initial fetch doesn't send max_items, let's trigger a refresh with window size immediately
-        // Or just fetch and then send an input with update?
-        // Actually, GET /api/state uses the default config.
-        // We should probably POST an init or just send a dummy input to set size.
-        // Better: GET and render. If size is wrong, the next input will fix it.
-        // But for initial load, we might see only 20 items on a large screen.
-        // Let's send a dummy input "Init" via POST just to set size?
-        // Or add query param to GET?
-        // Let's just use sendInput with a special "Init" key or empty key.
-        sendInput("", "");
-    }
-
-    async function sendInput(key, code) {
+    async function sendInput(key, code, value = "") {
         try {
             const pageSize = getPageSize();
             const res = await fetch('/api/input', {
@@ -155,7 +143,8 @@
                 body: JSON.stringify({ 
                     key: key, 
                     code: code,
-                    max_items: pageSize
+                    max_items: pageSize,
+                    value: value
                 })
             });
             const state = await res.json();

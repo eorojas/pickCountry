@@ -159,13 +159,13 @@ func (m *Manager) GetState() State {
 	}
 }
 
-// ProcessInput handles user input (char or navigation).
-func (m *Manager) ProcessInput(key string, code string) {
+// ProcessInput handles user input (char, navigation, or mouse).
+func (m *Manager) ProcessInput(key string, code string, value string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.isFinal {
-		if key == "Enter" {
+		if key == "Enter" || key == "MouseSelect" {
 			m.reset()
 			return
 		}
@@ -174,6 +174,22 @@ func (m *Manager) ProcessInput(key string, code string) {
 	totalMatches := len(m.filteredIndices)
 
 	switch key {
+	case "MouseSelect":
+		// Find the item by text value and select it
+		// We search in the current filtered list to be safe, or globally?
+		// Globally is safer if the list changed, but the user likely clicked what they saw.
+		// Let's search globally for exact match on Text.
+		found := false
+		for i, idx := range m.filteredIndices {
+			if m.displayItems[idx].Text == value {
+				m.selection = i
+				found = true
+				break
+			}
+		}
+		if found {
+			m.finalizeSelection()
+		}
 	case "ArrowDown":
 		if totalMatches > 0 && m.selection < totalMatches-1 {
 			m.selection++

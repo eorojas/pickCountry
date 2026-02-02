@@ -18,6 +18,7 @@ type InputRequest struct {
 	Key      string `json:"key"`
 	Code     string `json:"code"` // JS event code
 	MaxItems int    `json:"max_items"`
+	Value    string `json:"value,omitempty"` // For mouse selection
 }
 
 
@@ -54,7 +55,7 @@ func (s *Server) inputHandler(w http.ResponseWriter, r *http.Request) {
 	if req.MaxItems > 0 {
 		s.Manager.SetWindowSize(req.MaxItems)
 	}
-	s.Manager.ProcessInput(req.Key, req.Code)
+	s.Manager.ProcessInput(req.Key, req.Code, req.Value)
 
 	// Return updated state immediately
 	s.stateHandler(w, r)

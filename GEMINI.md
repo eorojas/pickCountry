@@ -61,6 +61,7 @@ From a list of countries create a web page that efficiently picks a country.
     - [x] "Name (Code)" display format.
     - [x] Dynamic window size calculation.
     - [x] Updated instructions on UI.
+    - [x] Mouse selection support.
 - [x] **Packaging**: Create build script (Makefile) and distribution archive.
 - [ ] **Testing**: Add unit tests for App Logic and Server.
 
