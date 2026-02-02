@@ -5,6 +5,9 @@
 *.so
 *.dylib
 *.spl
+pick-country
+*.tar.gz
+dist/
 
 # Test binary, built with `go test -c`
 *.test
@@ -18,6 +21,7 @@
 receiver.log
 net_config.json
 run_network_test.sh
+server.log
 
 # Dependency directories (remove the comment below to include it)
 vendor/
@@ -40,5 +44,3 @@ Thumbs.db
 .*-files
 *-tags
 tags
-
-
