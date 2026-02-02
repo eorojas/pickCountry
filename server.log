@@ -1,5 +1,4 @@
 Starting pickCountry...
 Loaded 249 countries.
-2026/02/01 17:44:43 Server listening on http://localhost:8081
-2026/02/01 17:44:43 Server error: listen tcp :8081: bind: address already in use
-exit status 1
+2026/02/01 17:53:19 Server listening on http://localhost:8081
+signal: killed

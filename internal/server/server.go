@@ -15,9 +15,11 @@ type Server struct {
 }
 
 type InputRequest struct {
-	Key  string `json:"key"`
-	Code string `json:"code"` // JS event code
+	Key      string `json:"key"`
+	Code     string `json:"code"` // JS event code
+	MaxItems int    `json:"max_items"`
 }
+
 
 func (s *Server) stateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -49,6 +51,9 @@ func (s *Server) inputHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.MaxItems > 0 {
+		s.Manager.SetWindowSize(req.MaxItems)
+	}
 	s.Manager.ProcessInput(req.Key, req.Code)
 
 	// Return updated state immediately

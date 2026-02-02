@@ -8,38 +8,57 @@
         body {
             font-family: sans-serif;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
             height: 100vh;
             background-color: #f0f0f0;
             margin: 0;
+            overflow: hidden; /* Prevent body scroll */
         }
         #container {
             background: white;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            width: 300px;
+            width: 90%;
+            max-width: 600px;
+            height: 90%;
+            display: flex;
+            flex-direction: column;
+        }
+        #instructions {
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 0.9em;
         }
         #filter-display {
-            font-size: 1.2em;
-            margin-bottom: 10px;
+            font-size: 1.5em;
+            margin-bottom: 15px;
             font-weight: bold;
             color: #333;
-            min-height: 1.4em;
-            border-bottom: 1px solid #ccc;
+            min-height: 1.5em;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        #list-container {
+            flex-grow: 1;
+            overflow-y: hidden; /* We handle scrolling via pagination/windowing */
+            position: relative;
         }
         #list {
             list-style: none;
             padding: 0;
             margin: 0;
-            max-height: 400px;
-            overflow-y: auto;
+            height: 100%;
         }
         .item {
-            padding: 8px 12px;
+            padding: 10px 15px;
             cursor: pointer;
             border-bottom: 1px solid #eee;
+            font-size: 1.1em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .item.selected {
             background-color: #007bff;
@@ -50,14 +69,22 @@
             color: green;
             font-weight: bold;
             display: none;
+            font-size: 1.2em;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
 <div id="container">
+    <div id="instructions">
+        Scroll down to the country of your choice (Arrows/PageKeys), or type the first letter. 
+        Right arrow or Enter selects.
+    </div>
     <div id="filter-display">Type to search...</div>
-    <ul id="list"></ul>
+    <div id="list-container">
+        <ul id="list"></ul>
+    </div>
     <div id="final-selection"></div>
 </div>
 
@@ -65,20 +92,38 @@
     const listEl = document.getElementById('list');
     const filterEl = document.getElementById('filter-display');
     const finalEl = document.getElementById('final-selection');
+    const containerEl = document.getElementById('list-container');
+
+    // Estimate item height - crucial for calculating page size
+    // Standard item with padding ~45px
+    const ITEM_HEIGHT = 45; 
+
+    function getPageSize() {
+        const h = containerEl.clientHeight;
+        return Math.floor(h / ITEM_HEIGHT);
+    }
 
     function render(state) {
         if (state.is_final) {
             finalEl.textContent = "Selected: " + state.filter + " (" + state.selected_code + ")";
             finalEl.style.display = "block";
-            listEl.style.display = "none";
+            // Hide list or keep it? Requirement: "Display the country name on web page."
+            // Usually implies replacing the selection UI.
+            document.getElementById('list-container').style.display = 'none';
+            document.getElementById('instructions').style.display = 'none';
             filterEl.textContent = state.filter;
             return;
         }
 
+        // Reset display if coming back
+        document.getElementById('list-container').style.display = 'block';
+        document.getElementById('instructions').style.display = 'block';
         finalEl.style.display = "none";
-        listEl.style.display = "block";
-        filterEl.textContent = state.filter || (state.list.length > 0 && state.list[0].length === 1 ? "Select Letter" : "Select Country");
+        
+        // Update filter text
+        filterEl.textContent = state.filter || "Type to search...";
 
+        // Render List
         listEl.innerHTML = '';
         state.list.forEach((item, index) => {
             const li = document.createElement('li');
@@ -86,30 +131,32 @@
             li.textContent = item;
             listEl.appendChild(li);
         });
-
-        // Scroll selected into view
-        const selected = listEl.querySelector('.selected');
-        if (selected) {
-            selected.scrollIntoView({ block: 'nearest' });
-        }
     }
 
     async function fetchState() {
-        try {
-            const res = await fetch('/api/state');
-            const state = await res.json();
-            render(state);
-        } catch (e) {
-            console.error("Error fetching state", e);
-        }
+        // Initial fetch doesn't send max_items, let's trigger a refresh with window size immediately
+        // Or just fetch and then send an input with update?
+        // Actually, GET /api/state uses the default config.
+        // We should probably POST an init or just send a dummy input to set size.
+        // Better: GET and render. If size is wrong, the next input will fix it.
+        // But for initial load, we might see only 20 items on a large screen.
+        // Let's send a dummy input "Init" via POST just to set size?
+        // Or add query param to GET?
+        // Let's just use sendInput with a special "Init" key or empty key.
+        sendInput("", "");
     }
 
     async function sendInput(key, code) {
         try {
+            const pageSize = getPageSize();
             const res = await fetch('/api/input', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key, code })
+                body: JSON.stringify({ 
+                    key: key, 
+                    code: code,
+                    max_items: pageSize
+                })
             });
             const state = await res.json();
             render(state);
@@ -119,20 +166,28 @@
     }
 
     document.addEventListener('keydown', (e) => {
-        // Prevent default scrolling for arrows
-        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+        // Prevent default scrolling for navigation keys
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) {
             e.preventDefault();
         }
         
-        // We only care about single char keys or navigation keys
         // Ignore modifiers (ctrl, alt, etc) unless needed
         if (e.ctrlKey || e.altKey || e.metaKey) return;
 
         sendInput(e.key, e.code);
     });
 
+    // Handle Resize - debounce?
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            sendInput("", ""); // Refresh with new size
+        }, 200);
+    });
+
     // Initial load
-    fetchState();
+    sendInput("", "");
 </script>
 
 </body>

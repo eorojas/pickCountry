@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -10,13 +11,13 @@ import (
 
 // Config holds configuration for the application logic.
 type Config struct {
-	MaxListSize int // N, default 20
+	MaxListSize int // Default window size
 }
 
 // State represents the current UI state to be sent to the frontend.
 type State struct {
 	List         []string `json:"list"`
-	Selection    int      `json:"selection"`
+	Selection    int      `json:"selection"` // Index relative to the window
 	Filter       string   `json:"filter"`
 	IsFinal      bool     `json:"is_final"`
 	SelectedCode string   `json:"selected_code,omitempty"`
@@ -28,12 +29,24 @@ type Manager struct {
 	config       Config
 	nameMap      data.NameEntryMap
 	codeMap      data.CountryCodeMap
-	sortedNames  []string // Pre-sorted list of all valid names/aliases
 	
+	// displayItems holds the full, pre-formatted list of "Name (Code)"
+	displayItems []DisplayItem 
+	
+	// filteredIndices holds the indices of displayItems that match the current filter
+	filteredIndices []int
+
 	filter       string
-	selection    int
+	selection    int // Absolute index into filteredIndices
 	isFinal      bool
 	selectedCode string
+	windowSize   int
+}
+
+type DisplayItem struct {
+	Text string
+	Code string
+	Name string // Original name key for map lookup
 }
 
 // NewManager creates a new state manager.
@@ -42,20 +55,47 @@ func NewManager(nameMap data.NameEntryMap, codeMap data.CountryCodeMap, cfg Conf
 		cfg.MaxListSize = 20
 	}
 
-	// Create a sorted list of all keys for easier filtering
-	names := make([]string, 0, len(nameMap))
-	for name := range nameMap {
-		names = append(names, name)
+	// flatten and sort
+	// We want to list every valid name alias.
+	// Format: "Name (Code)"
+	var items []DisplayItem
+	for name, code := range nameMap {
+		items = append(items, DisplayItem{
+			Text: fmt.Sprintf("%s (%s)", name, code),
+			Code: string(code),
+			Name: name,
+		})
 	}
-	sort.Strings(names)
+	
+	// Sort by display text
+	sort.Slice(items, func(i, j int) bool {
+		return strings.ToLower(items[i].Text) < strings.ToLower(items[j].Text)
+	})
+
+	// Initial filtered list is everything
+	indices := make([]int, len(items))
+	for i := range items {
+		indices[i] = i
+	}
 
 	return &Manager{
-		config:      cfg,
-		nameMap:     nameMap,
-		codeMap:     codeMap,
-		sortedNames: names,
-		filter:      "",
-		selection:   0,
+		config:          cfg,
+		nameMap:         nameMap,
+		codeMap:         codeMap,
+		displayItems:    items,
+		filteredIndices: indices,
+		filter:          "",
+		selection:       0,
+		windowSize:      cfg.MaxListSize,
+	}
+}
+
+// SetWindowSize allows dynamic updating of the view window size
+func (m *Manager) SetWindowSize(size int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if size > 0 {
+		m.windowSize = size
 	}
 }
 
@@ -63,20 +103,56 @@ func NewManager(nameMap data.NameEntryMap, codeMap data.CountryCodeMap, cfg Conf
 func (m *Manager) GetState() State {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
-	list := m.getCurrentList()
-	
-	// Ensure selection is within bounds
-	if m.selection >= len(list) {
-		m.selection = len(list) - 1
+
+	totalMatches := len(m.filteredIndices)
+	if totalMatches == 0 {
+		return State{
+			List:      []string{},
+			Selection: 0,
+			Filter:    m.filter,
+			IsFinal:   m.isFinal,
+		}
 	}
-	if m.selection < 0 && len(list) > 0 {
+
+	// Clamp selection
+	if m.selection >= totalMatches {
+		m.selection = totalMatches - 1
+	}
+	if m.selection < 0 {
 		m.selection = 0
 	}
 
+	// Calculate Window
+	// We want the selection to be roughly in the middle, or just ensure it's visible.
+	// Simple strategy: Try to center selection.
+	halfWindow := m.windowSize / 2
+	start := m.selection - halfWindow
+	if start < 0 {
+		start = 0
+	}
+	end := start + m.windowSize
+	if end > totalMatches {
+		end = totalMatches
+		// Adjust start if we hit the end
+		start = end - m.windowSize
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	// Build windowed list
+	windowList := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		originalIndex := m.filteredIndices[i]
+		windowList = append(windowList, m.displayItems[originalIndex].Text)
+	}
+
+	// Selection index relative to the window
+	relativeSelection := m.selection - start
+
 	return State{
-		List:         list,
-		Selection:    m.selection,
+		List:         windowList,
+		Selection:    relativeSelection,
 		Filter:       m.filter,
 		IsFinal:      m.isFinal,
 		SelectedCode: m.selectedCode,
@@ -89,171 +165,107 @@ func (m *Manager) ProcessInput(key string, code string) {
 	defer m.mu.Unlock()
 
 	if m.isFinal {
-		// Reset on any input if currently in final state, or specifically Enter?
-		// "Enter should reset the selection process"
 		if key == "Enter" {
 			m.reset()
 			return
 		}
-		// Optional: Start over if typing? For now let's just stick to Enter resets.
 	}
 
-	list := m.getCurrentList()
+	totalMatches := len(m.filteredIndices)
 
 	switch key {
 	case "ArrowDown":
-		if m.selection < len(list)-1 {
+		if totalMatches > 0 && m.selection < totalMatches-1 {
 			m.selection++
 		}
 	case "ArrowUp":
-		if m.selection > 0 {
+		if totalMatches > 0 && m.selection > 0 {
 			m.selection--
 		}
+	case "PageDown":
+		if totalMatches > 0 {
+			m.selection += m.windowSize
+			if m.selection >= totalMatches {
+				m.selection = totalMatches - 1
+			}
+		}
+	case "PageUp":
+		if totalMatches > 0 {
+			m.selection -= m.windowSize
+			if m.selection < 0 {
+				m.selection = 0
+			}
+		}
 	case "ArrowLeft":
-		// "Left arrow goes back one level."
+		// Backspace behavior for filter? Or strict navigation?
+		// Requirement: "Left arrow goes back one level."
+		// In a flat list model, this usually deletes the last char of filter.
 		if len(m.filter) > 0 {
-			m.filter = m.filter[:len(m.filter)-1]
-			m.selection = 0
+			m.updateFilter(m.filter[:len(m.filter)-1])
 		}
 	case "ArrowRight":
-		// "Next selection is make by right arrow or letter, or <enter>."
-		// Logic: If list item is a single letter (next char), append it.
-		// If it's a full name, maybe select it?
-		// For now, let's treat Right Arrow as "Auto-complete current selection" if it makes sense,
-		// or just strictly follow "next selection".
-		// If we are selecting a letter from the alphabet list, Right Arrow should 'type' that letter.
-		if m.selection >= 0 && m.selection < len(list) {
-			item := list[m.selection]
-			// If item is a single letter, append it
-			if len(item) == 1 {
-				m.filter += item
-				m.selection = 0
-			} else {
-				m.filter = item
-				m.selectedCode = string(m.nameMap[item])
-				m.isFinal = true
-			}
+		// Select current
+		if totalMatches > 0 {
+			m.finalizeSelection()
 		}
 
 	case "Enter":
-		if m.selection >= 0 && m.selection < len(list) {
-			item := list[m.selection]
-			if len(item) == 1 {
-				m.filter += item
-				m.selection = 0
-			} else {
-				// Finalize
-				m.filter = item
-				m.selectedCode = string(m.nameMap[item])
-				m.isFinal = true
-			}
+		if totalMatches > 0 {
+			m.finalizeSelection()
 		}
 	case "Backspace":
 		if len(m.filter) > 0 {
-			m.filter = m.filter[:len(m.filter)-1]
-			m.selection = 0
+			m.updateFilter(m.filter[:len(m.filter)-1])
 		}
 	default:
 		if len(key) == 1 {
 			// Printable character
-			m.filter += key
-			m.selection = 0 // Reset selection when filtering changes
+			m.updateFilter(m.filter + key)
 		}
+	}
+}
+
+func (m *Manager) updateFilter(newFilter string) {
+	m.filter = newFilter
+	prefix := strings.ToLower(m.filter)
+
+	// Re-calculate filteredIndices
+	// Optimization: If appending, we could filter the existing subset.
+	// But sticking to full scan is safer and fast enough for <1000 items.
+	
+	var newIndices []int
+	for i, item := range m.displayItems {
+		// Contains or Prefix? "Input Matcher... show matches as the user types name"
+		// Usually prefix for country pickers.
+		if strings.HasPrefix(strings.ToLower(item.Text), prefix) {
+			newIndices = append(newIndices, i)
+		}
+	}
+	m.filteredIndices = newIndices
+	m.selection = 0
+}
+
+func (m *Manager) finalizeSelection() {
+	if m.selection >= 0 && m.selection < len(m.filteredIndices) {
+		idx := m.filteredIndices[m.selection]
+		item := m.displayItems[idx]
+		
+		m.filter = item.Name // Set filter to actual name? Or Display Text?
+		// User requirement: "Output Method: Display the country name on web page."
+		// Let's use the display text (Name + Code) or just Name?
+		// Previously we used Name.
+		// "When a country name is shown the country code shoud be shown in parenthesis."
+		// This likely refers to the list view.
+		// For final selection, let's keep it consistent.
+		m.filter = item.Text 
+		m.selectedCode = item.Code
+		m.isFinal = true
 	}
 }
 
 func (m *Manager) reset() {
-	m.filter = ""
+	m.updateFilter("")
 	m.selection = 0
 	m.isFinal = false
 	m.selectedCode = ""
-}
-
-// getCurrentList calculates the list to display based on the current filter.
-// Logic:
-// 1. Filter sortedNames by prefix `m.filter`.
-// 2. If count <= N, return the names.
-// 3. If count > N, return the list of "next letters".
-//    - "next letter" means the character at index `len(m.filter)` of the matching names.
-func (m *Manager) getCurrentList() []string {
-	// If filter is empty, return A-Z
-	if m.filter == "" {
-		return generateAlphabet()
-	}
-
-	// 1. Find all matches
-	matches := []string{}
-	prefix := strings.ToLower(m.filter)
-	
-	// Optimization: could use binary search since sortedNames is sorted
-	for _, name := range m.sortedNames {
-		if strings.HasPrefix(strings.ToLower(name), prefix) {
-			matches = append(matches, name)
-		}
-	}
-
-	// If exact match found (and it's the only one, or we want to show it specifically?)
-	// If matches is empty, we might want to handle that (no results).
-	if len(matches) == 0 {
-		return []string{}
-	}
-
-	// 2. Check size
-	if len(matches) <= m.config.MaxListSize {
-		// Case: List short enough to display fully
-		// Note: We might want to preserve the original casing from sortedNames
-		return matches
-	}
-
-	// 3. List too long, show next letters
-	// "list of next letters appears"
-	// We need unique next letters
-	nextChars := make(map[string]struct{})
-	filterLen := len(m.filter)
-	
-	for _, name := range matches {
-		if len(name) > filterLen {
-			// Get the next character (runes to be safe with utf8)
-			runes := []rune(name)
-			if len(runes) > filterLen {
-				// We want the character relative to the filter length
-				// But wait, the filter might ignore case, but the output should probably correspond
-				// to the actual names. 
-				// "E.g., if 'a' is typed the list of next letters appears"
-				// If I typed "a", matches are "Afghanistan", "Albania".
-				// Next letters are 'f', 'l'.
-				// However, we need to match case-insensitively for the *filter*,
-				// but the "next letter" display usually implies valid next inputs.
-				// Let's normalize next letters to Upper Case for display? Or keep them as is?
-				// Usually "next letter" menus use Upper Case or lowercase consistently.
-				// Let's use the actual char from the name for now, but deduplicate case-insensitively?
-				// "A" -> "f" (Afghanistan), "l" (Albania).
-				
-				// Using case-insensitive deduplication for the menu usually looks cleaner (A-Z list)
-				// but names might have special chars.
-				// Let's stick to the character from the name.
-				
-				// Actually, if I type 'a', and I see 'f', I expect to type 'f' next.
-				// So if I type 'f', filter becomes "af".
-				
-				char := string(runes[filterLen])
-				nextChars[strings.ToUpper(char)] = struct{}{}
-			}
-		}
-	}
-	
-	result := make([]string, 0, len(nextChars))
-	for c := range nextChars {
-		result = append(result, c)
-	}
-	sort.Strings(result)
-	return result
-}
-
-func generateAlphabet() []string {
-	alpha := make([]string, 26)
-	for i := 0; i < 26; i++ {
-		alpha[i] = string(rune('A' + i))
-	}
-	return alpha
 }

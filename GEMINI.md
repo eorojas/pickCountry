@@ -56,9 +56,13 @@ From a list of countries create a web page that efficiently picks a country.
 - [x] **Core Logic**: Implement data structures and map building (NameEntryMap, CountryCodeMap).
 - [x] **Backend**: Create basic Go server to serve data.
 - [x] **Frontend**: Create the web interface for the Input Matcher.
+- [x] **Refinement**: 
+    - [x] Full list scrolling support.
+    - [x] "Name (Code)" display format.
+    - [x] Dynamic window size calculation.
+    - [x] Updated instructions on UI.
 - [x] **Packaging**: Create build script (Makefile) and distribution archive.
 - [ ] **Testing**: Add unit tests for App Logic and Server.
-- [ ] **Refinement**: Refactor and polish.
 
 ## Useful Commands
 - `go run main.go` ( Anticipated )
